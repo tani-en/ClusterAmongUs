@@ -1,6 +1,5 @@
 const TASK_STEPS = 4;
 const TASK_ID = "lamps";
-const STEP = 0;
 
 const RESET_SECONDS = 5;
 
@@ -45,7 +44,6 @@ function taskProgress(player){
 
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,
-      step: STEP,
       player: player
     });
   }

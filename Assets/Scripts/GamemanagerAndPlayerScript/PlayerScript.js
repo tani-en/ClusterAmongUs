@@ -44,6 +44,9 @@ function setRaycastTarget(component, value) {
   component.unityProp.raycastTarget = value;
 }
 
+const ROLE_NAMES = { imposter: "インポスター", crew: "クルー" };
+function roleName(r) { return ROLE_NAMES[r] ?? r; }
+
 const gameManagerId = _.worldItemReference("gameManager");
 _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE); // ゲームが始まって役職が届くまでは、普通の速さ
 
@@ -372,12 +375,12 @@ buttonsReady = tryInitButtons();
 
 _.onReceive((messageType, arg, sender) => {
   switch (messageType) {
-    case "assignRoles":
+    case "assignRoles": // from gamemanager. arg: "imposter" or "crew"
       _.cameraHandle.setPerspectiveSwitchingLocked(true);
       _.cameraHandle.switchToFirstPersonView();
       role = arg;
       _.setMoveSpeedRate(GAME_MOVE_SPEED_RATE);
-      assignRolesObject.unityProp.text = "あなたは" + role;
+      assignRolesObject.unityProp.text = "あなたは" + roleName(role);
       displayCount = 5;
       setKillButtonVisible(role === "imposter");
       setTaskRemainVisible(true);
@@ -397,7 +400,7 @@ _.onReceive((messageType, arg, sender) => {
       applyKillAreas();
       break;
 
-    case "kill":
+    case "kill": // from gamemanager. 
       clearSabotageUi();
       _.cameraHandle.setPerspectiveSwitchingLocked(false);
       _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE);
@@ -435,7 +438,7 @@ _.onReceive((messageType, arg, sender) => {
       setPhaseTimer(arg.duration);
       break;
 
-    case "votingStart":
+    case "votingStart": // from gamemanager. arg.candidates: { id, name } arg.duration: 会議時間
       meetingObject.unityProp.text = "投票してください";
       setupVoteButtons(arg.candidates);
       setKillButtonVisible(false);
@@ -477,11 +480,11 @@ _.onReceive((messageType, arg, sender) => {
       remainObject.unityProp.text = arg.text;
       break;
 
-    case "taskRemain":
+    case "taskRemain": // arg: 完了したタスクのパーセント(0~1)
       if (taskRemainImage) taskRemainImage.unityProp.fillAmount = arg;
       break;
 
-    case "votingResult":
+    case "votingResult": // from gamemanager. arg.ejectedName: 追放されたプレイヤーの名前, arg.ejectedRole: 同じく役職, arg.wasEjected: 自身が追放されたか
       setVoteButtonsVisible(false);
       meetingObject.unityProp.text = "";
       resultObject.unityProp.text = arg.ejectedName
@@ -655,7 +658,7 @@ _.onFrame((deltaTime) => {
     if (displayCount <= 0) {
       displayCount = -1;
       assignRolesObject.unityProp.text = "";
-      roleObject.unityProp.text = role;
+      roleObject.unityProp.text = roleName(role);
     }
   }
 

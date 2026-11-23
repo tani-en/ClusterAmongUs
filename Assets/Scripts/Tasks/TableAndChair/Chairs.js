@@ -1,6 +1,5 @@
 const MAX_CHAIR = 4;
 const TASK_ID = "chairs";
-const STEP = 0;
 
 const ChairPoses    = [$.worldItemReference("chairPos"), $.worldItemReference("chairPos1"), $.worldItemReference("chairPos2"), $.worldItemReference("chairPos3")];
 const CHAIRTEMPLATE = new WorldItemTemplateId("chair");
@@ -70,7 +69,6 @@ function taskProgress(player, chairPos){
     $.state.done = [...$.state.done, player.id];
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,
-      step: STEP,
       player: player
     });
   }

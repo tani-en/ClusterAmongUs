@@ -1,5 +1,4 @@
-const TASK_ID = "faucet";    // GameManager.js の TASK_DEFS の id
-const STEP = 0;              // 何番目の工程か(0始まり。1工程だけのタスクは0)
+const TASK_ID = "faucet";
 
 const REOPEN_SECONDS = 5;    // 蛇口を閉めてから、水がまた出始めるまでの秒数
 
@@ -44,7 +43,6 @@ $.onUpdate(deltaTime => {
 function taskProgress(player) {
   $.worldItemReference("gameManager").send("taskStep", {
     taskId: TASK_ID,
-    step: STEP,
     player: player
   });
 }

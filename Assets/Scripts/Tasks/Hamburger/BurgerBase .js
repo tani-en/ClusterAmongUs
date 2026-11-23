@@ -16,8 +16,7 @@
 // ・見た目の山は1つ。上のパンを載せると、山は閉じて、SHOW_SECONDS 秒そのまま見せてから、片付く。
 // ・間違った順番だった場合は、完了にならずに、山が片付くだけ(最初からやり直し)。
 
-const TASK_ID = "burger"; // GameManager.js の TASK_DEFS の id
-const STEP = 0;           // 何番目の工程か(0始まり)
+const TASK_ID = "burger";
 
 const SHOW_SECONDS = 3;   // 上のパンを載せてから、山を片付けるまでの秒数
 
@@ -102,7 +101,7 @@ function judge(player, middle) {
   if (!ok) return; // 間違い。完了にならず、山が片付くだけ
 
   $.state.done = [...$.state.done, player.id];
-  GAMEMANAGER.send("taskStep", { taskId: TASK_ID, step: STEP, player: player });
+  GAMEMANAGER.send("taskStep", { taskId: TASK_ID, player: player });
 }
 
 function clearStack() {

@@ -1,4 +1,5 @@
 const UNTILSTARTTIME = 10;
+const UNDERWAITINGROOMHEIGHT = 9;
 const WAITING_ROOM_POSITION = new Vector3(0, 20, 5);
 const TEXTVIEW = $.subNode("Text");
 const GAMEMANAGER = $.worldItemReference("gameManager");
@@ -19,7 +20,7 @@ $.onInteract(() => {
   // 探索中のplayerは全員戻す
   const allPlayers = $.getPlayersNear($.getPosition(), Infinity);
   for (const p of allPlayers) {
-    if (p.getPosition().y < 9) {
+    if (p.getPosition().y < UNDERWAITINGROOMHEIGHT) {
       p.setPosition(WAITING_ROOM_POSITION);
     }
   }

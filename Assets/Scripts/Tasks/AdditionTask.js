@@ -5,7 +5,6 @@
 // ・GameManager から "start" が届くと、連続の数と問題を最初に戻す。
 
 const TASK_ID = "addition";
-const STEP = 0;
 const REQUIRED = 3; // 連続で正解する問題の数
 
 const TEXT = $.subNode("TextView");
@@ -37,7 +36,7 @@ $.onReceive((messageType, arg, sender) => {
         if (n >= REQUIRED) {
           streaks[player.id] = 0;
           $.state.message = name + ": 完了!";
-          $.worldItemReference("gameManager").send("taskStep", { taskId: TASK_ID, step: STEP, player: player });
+          $.worldItemReference("gameManager").send("taskStep", { taskId: TASK_ID, player: player });
         } else {
           streaks[player.id] = n;
           $.state.message = name + ": 正解 " + n + "/" + REQUIRED;

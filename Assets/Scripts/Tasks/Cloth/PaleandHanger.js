@@ -1,6 +1,5 @@
 const TASK_STEPS = 5;
 const TASK_ID = "laundry"; // GameManager.js の TASK_DEFS の id
-const STEP = 0;        // 何番目の工程か(0始まり。1工程だけのタスクは0)
 
 const DRAWERS    = [$.worldItemReference("drawer"), $.worldItemReference("drawer1"), $.worldItemReference("drawer2"), $.worldItemReference("drawer3"), $.worldItemReference("drawer4")];
 const DRAWERPOSES = [Vector3(19, 0, 5.3), Vector3(-29.2, 0, -8.2), Vector3(-17, 0, -19.7), Vector3(18.3, 0, -22.7), Vector3(22, 0, -13.5)];
@@ -71,7 +70,6 @@ function taskProgress(player){
   if (stateTask[player.id] === TASK_STEPS){
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,
-      step: STEP,
       player: player
     });
   }

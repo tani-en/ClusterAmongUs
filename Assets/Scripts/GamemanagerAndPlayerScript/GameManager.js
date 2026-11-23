@@ -9,18 +9,19 @@ const CORPSE_MARKER_COUNT = 6; // 死体マーカーの数
 const MAX_IMPOSTERS = 5;       // キルセンサーの数(インポスターの最大数)
 const RETURN_TO_LOBBY_DELAY = 5; // ゲーム終了後、WAITING_ROOMへ飛ばすまでの秒数(PlayerScript.jsのRESULT_DISPLAY_TIMEと合わせる)
 
+const UNDERWAITINGROOMHEIGHT = 9;
 
 // ==== TextView =====
 const textView = $.subNode("TextView");
 const participantsText = $.subNode("participantsText");
 
 // ===== タスク設定 =====
-const TASKS_PER_PLAYER = { common: 1, short: 6 }; // common: 全員の候補から1つ、short: 6つ
-const TYPE_LABEL = { common: "共通", short: "短" };
+const TASKS_PER_PLAYER = { common: 1 }; // common: 全員の候補から1つ
+const TYPE_LABEL = { common: "共通" };
 const DEBUG_TASK_LOG = true;
 
 // ===== 死亡したクルーのタスク(待機室での作業)の設定 =====
-const GHOST_STEP_SECONDS = 60;   // 時間経過で1タスク完了するまでの秒数
+const GHOST_STEP_SECONDS = 100;   // 時間経過で1タスク完了するまでの秒数
 const GHOST_ACTION_REDUCE = 10;  // 待ち時間が縮む秒数
 const GHOST_ACTION_COOLDOWN = 2; // 作業台を続けて使えるようになるまでの秒数(連打の防止)
 const GHOST_ACTION_MAX = 20;     // 1回の作業で縮められる秒数の上限(GhostCalc.js など、秒数を指定する作業台用)
@@ -30,9 +31,9 @@ const SABOTAGE_FIRST_COOLDOWN = 20; // ゲーム開始から、最初のサボ�
 const SABOTAGE_COOLDOWN = 30;       // サボタージュが直ってから、次を起こせるまでの秒数
 const REACTOR_SECONDS = 45;         // 発電機の暴走: この秒数以内に直せないと、インポスターの勝ち
 const PANEL_HOLD_SECONDS = 3;       // 発電機の暴走: パネルを押してから、この秒数のあいだ「押している」とみなす
-const REACTOR_PANELS = ["reactorPanel0", "reactorPanel1"].map(name => $.worldItemReference(name)); // 別々のプレイヤーが、同時に押す
+const REACTOR_PANELS = ["reactorPanel0", "reactorPanel1"].map(name => $.worldItemReference(name));
 
-// ===== 電球タスク(レバー式)の設定 =====
+// ===== 電球タスクの設定 =====
 const LIGHT_LEVERS = 6;
 
 // ===== ゴミ捨てタスクの設定 =====
@@ -70,19 +71,16 @@ for (let i = 0; i < MAX_IMPOSTERS; i++) {
 }
 const KILLSENSORS = killSensors;
 
-// ===== ハンバーガータスク(材料を順番に積み上げる)の設定 =====
+// ===== ハンバーガータスクの設定 =====
 const BURGER_MIDDLE = ["steak", "cheese", "cabbage", "tomato"]; // 順番がランダムになる材料(下のパンと、最後の上のパンは固定)
 const BURGER_TOP = "upper";
 const BURGER_NAMES = { steak: "パティ", cheese: "チーズ", cabbage: "キャベツ", tomato: "トマト", upper: "上のパン" };
-// BurgerBase.js を付けたアイテム(下のパン)。作業台を増やすときは、ここに名前を足す(箱のBurgerBox.jsの BASES とも合わせる)
 const BURGER_BASES = ["burgerBase", "burgerBase1", "burgerBase2"].map(name => $.worldItemReference(name));
 
 const START_BT = $.worldItemReference("startBt");
 const PLAYER_SCRIPT_GIVER = $.worldItemReference("setPlayerScript"); // PlayerScript を渡す係(setPlayerScript.js)
 
 
-// タスクは、どれも1つの作業で完了する(工程はない)。進捗バーは「タスク」を1つとして数える。
-// id は、各タスクのスクリプトの TASK_ID と対応させる。room: 場所、label: やること(タスク一覧に出る)。
 const TASK_DEFS = {
   common: [
     { id: "dish", name: "皿を並べる", room: "食堂", label: "皿を6枚、テーブルに並べる" },
@@ -107,16 +105,18 @@ const TASK_DEFS = {
   ],
 };
 
+
+
 $.onStart(() => {
   $.state.timer = 0;
-  $.state.participants = [];   // ロビー内の生存プレイヤー
+  $.state.participants = [];   // 参加予定のプレイヤー
   $.state.imposterNum = 1;
   $.state.shortTaskNum = 6;
   $.state.impostors = [];
   $.state.crews = [];
-  $.state.deadPlayers = [];    // 死亡したプレイヤー
+  $.state.deadPlayers = [];
   $.state.taskStatus = {};     // { プレイヤーID: { fake, tasks: [...] } } 全員のタスクの進み具合
-  $.state.taskRemain = 1;
+  $.state.taskRemain = 1;      // 0~1
   $.state.allTask = 1;
   $.state.phase = "lobby";     // lobby | playing | meeting | voting | ended
   $.state.phaseTimer = 0;
@@ -125,7 +125,7 @@ $.onStart(() => {
   $.state.killAreaPlayers = []; // キルエリアを表示中のプレイヤー
   $.state.canStart = false;    // 開始できる人数がそろっているか(StartBtに教えた最新の値)
   $.state.impostorIds = [];    // このゲームのインポスターのid(追放・退室後も覚えておく。状況ボード用)
-  $.state.sabotage = newSabotage(0); // サボタージュの状態(下の newSabotage を参照)
+  $.state.sabotage = newSabotage(0); // サボタージュの状態
   $.state.ghosts = {};         // { プレイヤーID: { timer, cool } } 死亡したクルーの、次のタスクが自動で完了するまでの残り秒数
 
   hideAllKillAreas();
@@ -232,8 +232,8 @@ $.onReceive((messageType, arg, sender) => {
       // 探索中のplayerは全員戻す
       const allPlayers = $.getPlayersNear($.getPosition(), Infinity);
       for (const p of allPlayers) {
-        const pos = p.getPosition(); // 読み込み中や退室直後のプレイヤーは、位置が取れない(null)ことがある
-        if (pos && pos.y < 9) {
+        const pos = p.getPosition();
+        if (pos && pos.y < UNDERWAITINGROOMHEIGHT) {
           p.setPosition(WAITING_ROOM_POSITION);
         }
       }
@@ -246,8 +246,7 @@ $.onReceive((messageType, arg, sender) => {
       setCanStart(false);
       $.state.ghosts = {};
       $.state.sabotage = newSabotage(SABOTAGE_FIRST_COOLDOWN);
-      $.worldItemReference("mapExploreBt").send("phase", "playing");
-      $.worldItemReference("mapReturnBt").send("phase", "playing");
+      sendMapButtonsPhase("playing");
       $.worldItemReference("bookMessy").send("start", null);
       $.worldItemReference("wateringCan").send("start", null);
       $.worldItemReference("keyBoard").send("start", null);
@@ -264,12 +263,13 @@ $.onReceive((messageType, arg, sender) => {
       $.worldItemReference("abort").send("start", participants.length);
 
 
+      // task配布
       assignTasks(impostors, crews);
       sendTrashPlaces(crews);
       sendPianoMelodies(crews);
       sendBurgerOrders(crews);
       sendDiceTargets(crews);
-      sendLightOrders(crews);   
+      sendLightOrders(crews);
       for (const p of [...impostors, ...crews]) {
         p.send("taskRemain", 1);
         sendTaskList(p);
@@ -297,7 +297,7 @@ $.onReceive((messageType, arg, sender) => {
       victim.send("kill", null);
       updateStatusBoard();
 
-      startGhostTasks(victim.id); // 死亡したクルーのタスクは、待機室での作業と時間経過で進める
+      startGhostTasks(victim.id);
       if (!checkWinCondition()) checkTaskWin();
       break;
     }
@@ -322,15 +322,23 @@ $.onReceive((messageType, arg, sender) => {
       break;
     }
 
-    // 投票はPlayerScriptから直接送られるため、senderは投票したプレイヤー自身になる
-    case "vote": {
+    case "vote": { // from playerscript.
       if ($.state.phase !== "voting") {
         $.log("vote受信するもphaseが違うため無視: phase=" + $.state.phase + " from=" + (sender.userDisplayName ?? sender.id));
         break;
       }
-      $.log((sender.userDisplayName ?? sender.id) + " が投票: " + arg);
-      const votes = { ...$.state.votes, [sender.id]: arg }; // arg: targetId または "skip"
-      $.state.votes = votes;
+
+      //log用
+      const voterName = sender.userDisplayName ?? sender.id;
+      let targetName;
+      if (arg === "skip") {
+        targetName = "スキップ";
+      } else {
+      const target = ($.state.candidates ?? []).find(c => c.id === arg);
+        targetName = target ? target.name : arg; // 見つからなければIDのまま表示
+      }
+      $.log(voterName + " が投票: " + targetName);
+      //log用ここまで
 
       const alivePlayers = [...$.state.impostors, ...$.state.crews];
       if (Object.keys(votes).length >= alivePlayers.length) {
@@ -340,7 +348,7 @@ $.onReceive((messageType, arg, sender) => {
     }
 
     // 担当しているか・すでに終わっていないかをここで確認する。
-    case "taskStep": { // from each task. arg.player: 完了したプレイヤーのHd, arg.taskId: タスクのId (arg.step は使わない)
+    case "taskStep": { // from each task. arg.player: 完了したプレイヤーのHd, arg.taskId: タスクのId
     if ($.state.phase !== "playing") break;
     if (!(sender instanceof ItemHandle)) break;
 
@@ -632,6 +640,7 @@ function startVoting() {
 
   const alivePlayers = [...$.state.impostors, ...$.state.crews];
   const candidates = alivePlayers.map(p => ({ id: p.id, name: p.userDisplayName }));
+  $.state.candidates = candidates;
   for (const p of alivePlayers) {
     p.send("votingStart", { candidates, duration: VOTING_TIME });
   }
@@ -691,7 +700,7 @@ function finishVoting() {
     }
   }
 
-  updateStatusBoard(); // 追放された人を、死亡の欄へ移す
+  updateStatusBoard();
 
   for (const p of alivePlayers) {
     p.send("votingResult", {
@@ -752,6 +761,12 @@ function endGame(winner) {
   hideAllKillAreas();
 }
 
+function sendMapButtonsPhase(phase) {
+  for (const name of ["mapExploreBt", "mapReturnBt"]) {
+    $.worldItemReference(name).send("phase", phase);
+  }
+}
+
 
 function returnToLobby() {
   const survivors = [...$.state.impostors, ...$.state.crews]
@@ -773,8 +788,7 @@ function returnToLobby() {
 
   $.state.phase = "lobby";
   updateStatusBoard();
-  $.worldItemReference("mapExploreBt").send("phase", "lobby");
-  $.worldItemReference("mapReturnBt").send("phase", "lobby");
+ sendMapButtonsPhase("lobby");
   $.state.timer = 0;
 }
 
@@ -981,7 +995,7 @@ function sendTaskList(player) {
   player.send("taskList", { text: text });
 }
 
-// ===== 状況ボード(textView に出す。参加していない人にも見える) =====
+// ===== 状況ボード =====
 // 例:
 //   ゲーム進行中
 //   生存者 4人 / 死亡 2人
@@ -989,7 +1003,7 @@ function sendTaskList(player) {
 //
 //   生存: A, B(インポスター), C, D
 //   死亡: E, F
-// インポスターには、名前の後ろに「(インポスター)」を付ける。
+
 function updateStatusBoard(headline) {
   let text;
   const phase = $.state.phase;
@@ -1010,7 +1024,7 @@ function updateStatusBoard(headline) {
       ? (sab.type === "blackout" ? "停電中!" : "発電機が暴走中! あと " + Math.max(0, Math.ceil(sab.timer)) + "秒")
       : null;
     const title = headline ?? sabTitle ?? (phase === "meeting" ? "会議中" : phase === "voting" ? "投票中" : "ゲーム進行中");
-    text = title + "\n生存者 " + alive.length + "人 / 死亡 " + dead.length + "人\nタスク " + percent + "%\n\n"
+    text = title + "\nタスク " + percent + "%\n\n"
       + "生存: " + (alive.length > 0 ? alive.join(", ") : "なし") + "\n"
       + "死亡: " + (dead.length > 0 ? dead.join(", ") : "なし");
   }
@@ -1128,9 +1142,6 @@ function broadcastTaskRemain() {
 }
 
 // 死亡(キル・追放)したクルーのタスクを、待機室での作業に切り替える。
-// 未完了の工程は、全体の数から引かずに残す。GHOST_STEP_SECONDS 秒ごとに1タスクずつ自動で完了する。
-// 待機室の作業台(GhostWork.js)を使うと、次の完了までの時間が縮む。
-// マップのステーションでは、進められなくなる(taskStep で entry.ghost を見て止める)。
 function startGhostTasks(playerId) {
   const status = $.state.taskStatus;
   const entry = status[playerId];

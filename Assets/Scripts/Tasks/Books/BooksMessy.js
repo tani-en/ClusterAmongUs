@@ -1,6 +1,5 @@
 const TASK_STEPS = 5;
 const TASK_ID = "books"; // GameManager.js の TASK_DEFS の id
-const STEP = 0;        // 何番目の工程か(0始まり。1工程だけのタスクは0)
 
 const BOOKSTAND    = [$.worldItemReference("bookStandRed"), $.worldItemReference("bookStandBlue"), $.worldItemReference("bookStandGreen")];
 const BOOKTEMPLATE = [new WorldItemTemplateId("book_red"), new WorldItemTemplateId("book_blue"), new WorldItemTemplateId("book_green")];
@@ -70,7 +69,6 @@ function taskProgress(player){
   if (stateTask[player.id] === TASK_STEPS){
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,
-      step: STEP,
       player: player
     });
   }

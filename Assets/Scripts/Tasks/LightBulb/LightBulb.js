@@ -1,8 +1,7 @@
 const LIGHTBULBLIGHTS = [$.subNode("LightBulblight"), $.subNode("LightBulblight (1)"), $.subNode("LightBulblight (2)")];
 const LIGHTBULBDARKS  = [$.subNode("LightBulbdark"),  $.subNode("LightBulbdark (1)"),  $.subNode("LightBulbdark (2)")];
 
-const TASK_ID = "light";    // GameManager.js の TASK_DEFS の id
-const STEP = 0;
+const TASK_ID = "light";
 const LIGHT_SECONDS = 3;    // 完了したとき、電気を光らせておく秒数
 
 
@@ -85,7 +84,6 @@ function completeTask(player){
   $.state.done = [...$.state.done, player.id];
   $.worldItemReference("gameManager").send("taskStep", {
     taskId: TASK_ID,
-    step: STEP,
     player: player
   });
   // 本当に終えたクルーがいるときだけ光る(他の人から見えるので、本物の証明になる)

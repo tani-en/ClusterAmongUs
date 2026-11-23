@@ -1,7 +1,6 @@
 const MAXTEMPLATE = 5;
 const TASK_STEPS = 2;
 const TASK_ID = "sheet"; // GameManager.js の TASK_DEFS の id
-const STEP = 0;        // 何番目の工程か(0始まり。1工程だけのタスクは0)
 
 const BEDS = [$.worldItemReference("bed"), $.worldItemReference("bed1")];
 const SHEETTEMPLATE = new WorldItemTemplateId("sheet");
@@ -67,7 +66,6 @@ function taskProgress(player){
   if (stateTask[player.id] === TASK_STEPS){
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,
-      step: STEP,
       player: player
     });
   }

@@ -1,6 +1,5 @@
 const MAX_DISH = 6;
 const TASK_ID = "dish";
-const STEP = 0;
 
 const DishPoses    = [$.worldItemReference("dishPos"), $.worldItemReference("dishPos1"), $.worldItemReference("dishPos2"), $.worldItemReference("dishPos3"), $.worldItemReference("dishPos4"), $.worldItemReference("dishPos5")];
 const DISHTEMPLATE = new WorldItemTemplateId("dish");
@@ -70,7 +69,6 @@ function taskProgress(player, dishPos){
     $.state.done = [...$.state.done, player.id];
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,
-      step: STEP,
       player: player
     });
   }

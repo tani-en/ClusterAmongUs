@@ -1,7 +1,6 @@
 const COAL_PER_BOILER = 3; // 1つのボイラーに入れる石炭の数
 const MAX_COALS = 5;       // 同時に出しておける石炭の数
 const TASK_ID = "power";   // GameManager.js の TASK_DEFS の id(発電の1工程目が石炭を入れる作業)
-const STEP = 0;            // 何番目の工程か(0始まり。1工程だけのタスクは0)
 
 const Boilers    = [$.worldItemReference("boiler"), $.worldItemReference("boiler1"), $.worldItemReference("boiler2")];
 const COALTEMPLATE = new WorldItemTemplateId("coal");
@@ -77,7 +76,6 @@ function taskProgress(player, boiler){
     $.state.done = [...$.state.done, player.id];
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,
-      step: STEP,
       player: player
     });
   }

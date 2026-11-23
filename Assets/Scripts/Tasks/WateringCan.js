@@ -1,6 +1,5 @@
 const TASK_STEPS = 6;
 const TASK_ID = "plants";
-const STEP = 0;
 
 const CHECK_INTERVAL = 0.2;  // 判定する間隔(秒)
 
@@ -81,7 +80,6 @@ function completePlant(player, idx, d) {
     d.sent = true;
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,
-      step: STEP,
       player: player
     });
   }

@@ -16,8 +16,7 @@
 // ・斜めに止まったとき(どの面もはっきり上を向いていない)は、結果にしない。
 // ・落ちて下に行き過ぎたら、最初の位置に戻す。
 
-const TASK_ID = "dice";   // GameManager.js の TASK_DEFS の id
-const STEP = 0;
+const TASK_ID = "dice";
 
 const SETTLE_SPEED = 0.05;    // これ以下なら、止まっているとみなす[m/s]
 const SETTLE_SECONDS = 1.0;   // 止まっている状態が続く秒数
@@ -170,7 +169,7 @@ function decide(face) {
   }
   if (face === target) {
     showText("出た目: " + face + "  当たり!");
-    GAMEMANAGER.send("taskStep", { taskId: TASK_ID, step: STEP, player: player });
+    GAMEMANAGER.send("taskStep", { taskId: TASK_ID, player: player });
   } else {
     showText("出た目: " + face + "  (目標は " + target + ")");
   }

@@ -15,8 +15,7 @@
 // 押すたびに判定する。間違えたら最初から(ただし、間違えて押した鍵盤が曲の最初の音なら、1音目として数える)。
 // 進み具合は、GameManager には送らない。
 
-const TASK_ID = "piano"; // GameManager.js の TASK_DEFS の id
-const STEP = 0;          // 何番目の工程か(0始まり)
+const TASK_ID = "piano";
 const VOLUME = 2.0;      // 音量(0〜2.5。標準は1)
 
 const GAMEMANAGER = $.worldItemReference("gameManager");
@@ -95,7 +94,7 @@ $.onReceive((messageType, arg, sender) => {
 
       if (next === notes.length) {
         $.state.done = [...$.state.done, player.id];
-        GAMEMANAGER.send("taskStep", { taskId: TASK_ID, step: STEP, player: player });
+        GAMEMANAGER.send("taskStep", { taskId: TASK_ID, player: player });
       }
       break;
     }

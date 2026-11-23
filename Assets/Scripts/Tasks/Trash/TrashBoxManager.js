@@ -8,8 +8,7 @@
 //   ここ → GameManager : "trashProgress" { taskId, player, count: まだ回収していない場所の配列 }
 //                        "taskStep"      { taskId, step, player }  (全部回収したとき)
 
-const TASK_ID = "trash"; // GameManager.js の TASK_DEFS の id
-const STEP = 0;          // 何番目の工程か(0始まり)
+const TASK_ID = "trash";
 
 const GAMEMANAGER = $.worldItemReference("gameManager");
 const TRASHBOXES = [
@@ -51,7 +50,7 @@ $.onReceive((messageType, arg, sender) => {
 
       if (left.length === 0) {
         $.state.done = [...$.state.done, player.id];
-        GAMEMANAGER.send("taskStep", { taskId: TASK_ID, step: STEP, player: player });
+        GAMEMANAGER.send("taskStep", { taskId: TASK_ID, player: player });
       }
       break;
     }

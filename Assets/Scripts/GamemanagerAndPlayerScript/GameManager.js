@@ -339,6 +339,8 @@ $.onReceive((messageType, arg, sender) => {
       }
       $.log(voterName + " が投票: " + targetName);
       //log用ここまで
+      const votes = { ...$.state.votes, [sender.id]: arg }; // arg: targetId または "skip"
+      $.state.votes = votes;
 
       const alivePlayers = [...$.state.impostors, ...$.state.crews];
       if (Object.keys(votes).length >= alivePlayers.length) {

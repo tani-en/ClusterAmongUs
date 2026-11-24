@@ -45,15 +45,10 @@ function setRaycastTarget(component, value) {
 }
 
 const ROLE_NAMES = { imposter: "インポスター", crew: "クルー" };
-const SPECIAL_ROLE_NAMES = {
-  engineer: "エンジニア"
-};
-
 function displayRoleName() {
-  if (role === "crew" && specialRole) {
-    return roleName(role) + "（" + SPECIAL_ROLE_NAMES[specialRole] + "）";
-  }
-  return roleName(role);
+  return specialRole
+    ? roleName(role) + "（" + (specialRoleName || specialRole) + "）"
+    : roleName(role);
 }
 
 function roleName(r) { return ROLE_NAMES[r] ?? r; }
@@ -61,8 +56,9 @@ function roleName(r) { return ROLE_NAMES[r] ?? r; }
 const gameManagerId = _.worldItemReference("gameManager");
 _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE); // ゲームが始まって役職が届くまでは、普通の速さ
 
-let role = "";
-let specialRole = "";
+let role = "";          // 陣営: "crew" / "imposter"
+let specialRole = "";   // 特殊役職ID
+let specialRoleName = ""; // 特殊役職の表示名
 let displayCount = -1;       // 役職表示("あなたは○○")を出しておく残り秒数
 let phaseTimeLeft = -1;      // 会議/投票の残り時間（ローカルでカウントダウン表示するだけ、判定はGameManager側）
 let resultDisplayCount = -1; // 投票結果/勝敗結果を表示しておく残り秒数
@@ -392,9 +388,10 @@ _.onReceive((messageType, arg, sender) => {
       _.cameraHandle.switchToFirstPersonView();
       role = arg;
       specialRole = ""; // 新しいゲームでは特殊役職をリセット
+      specialRoleName = "";
 
       _.setMoveSpeedRate(GAME_MOVE_SPEED_RATE);
-      assignRolesObject.unityProp.text = "あなたは" + roleName(role);
+      assignRolesObject.unityProp.text = "あなたは" + displayRoleName();
       displayCount = 5;
 
       setKillButtonVisible(role === "imposter");
@@ -402,7 +399,8 @@ _.onReceive((messageType, arg, sender) => {
       break;
 
     case "assignSpecialRole":
-      specialRole = arg;
+      specialRole = arg.id;
+      specialRoleName = arg.name ?? arg.id;
 
       // 役職発表中なら表示を更新
       if (displayCount >= 0) {
@@ -432,6 +430,7 @@ _.onReceive((messageType, arg, sender) => {
 
       role = "";
       specialRole = "";
+      specialRoleName = "";
       assignRolesObject.unityProp.text = "";
       roleObject.unityProp.text = "";
       remainObject.unityProp.text = "";
@@ -523,6 +522,7 @@ _.onReceive((messageType, arg, sender) => {
         _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE);
         role = "";
         specialRole = "";
+        specialRoleName = "";
         roleObject.unityProp.text = "";
         remainObject.unityProp.text = "";
         resumeKillButtonAfterResult = false;
@@ -536,6 +536,8 @@ _.onReceive((messageType, arg, sender) => {
 
     case "gameEnd":
       clearSabotageUi();
+      specialRole = "";
+      specialRoleName = "";
       _.cameraHandle.setPerspectiveSwitchingLocked(false);
       if(!arg.wasDead) _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE);
       setVoteButtonsVisible(false);

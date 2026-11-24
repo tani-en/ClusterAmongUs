@@ -11,6 +11,28 @@ const RETURN_TO_LOBBY_DELAY = 5; // ゲーム終了後、WAITING_ROOMへ飛ば�
 
 const UNDERWAITINGROOMHEIGHT = 9;
 
+// ===== 役職設定 =====
+// faction は既存の陣営判定に使う。
+// 特殊役職を追加するときは、ここに定義を追加する。
+const ROLE_DEFINITIONS = {
+  engineer: {
+    faction: "crew",
+    name: "エンジニア",
+    defaultCount: 1,
+    maxCount: 10,
+    abilities: ["vent"] // ベントを無制限に使用できる
+  }
+};
+const MAX_SPECIAL_ROLE_COUNT = 10;
+
+function createDefaultRoleCounts() {
+  const counts = {};
+  for (const [roleId, def] of Object.entries(ROLE_DEFINITIONS)) {
+    counts[roleId] = def.defaultCount ?? 0;
+  }
+  return counts;
+}
+
 // ==== TextView =====
 const textView = $.subNode("TextView");
 const participantsText = $.subNode("participantsText");
@@ -115,7 +137,7 @@ $.onStart(() => {
   $.state.impostors = [];
   $.state.crews = [];
   $.state.deadPlayers = [];
-  $.state.engineers = [];
+  $.state.specialRolePlayers = {}; // { roleId: PlayerHandle[] }\n  $.state.roleCounts = createDefaultRoleCounts();
   $.state.taskStatus = {};     // { プレイヤーID: { fake, tasks: [...] } } 全員のタスクの進み具合
   $.state.taskRemain = 1;      // 0~1
   $.state.allTask = 1;
@@ -223,6 +245,35 @@ $.onReceive((messageType, arg, sender) => {
       break;
     }
 
+    case "changeRoleCount": { // arg: { roleId, delta }. ロビーで役職人数を変更
+      if ($.state.phase !== "lobby") break;
+      if (!arg || typeof arg.roleId !== "string" || !Number.isInteger(arg.delta)) break;
+
+      const def = ROLE_DEFINITIONS[arg.roleId];
+      if (!def) break;
+
+      const counts = { ...$.state.roleCounts };
+      const current = counts[arg.roleId] ?? def.defaultCount ?? 0;
+      const maxCount = Math.min(def.maxCount ?? MAX_SPECIAL_ROLE_COUNT, MAX_SPECIAL_ROLE_COUNT);
+      const next = Math.max(0, Math.min(maxCount, current + arg.delta));
+      counts[arg.roleId] = next;
+      $.state.roleCounts = counts;
+
+      // ボタン側で表示を更新できるよう、変更後の人数を返信
+      sender.send("roleCountChanged", { roleId: arg.roleId, name: def.name, count: next });
+      break;
+    }
+
+    case "getRoleCount": { // arg: roleId。ボタン初期化時の表示取得
+      if (typeof arg !== "string" || !ROLE_DEFINITIONS[arg]) break;
+      sender.send("roleCountChanged", {
+        roleId: arg,
+        name: ROLE_DEFINITIONS[arg].name,
+        count: $.state.roleCounts[arg] ?? ROLE_DEFINITIONS[arg].defaultCount ?? 0
+      });
+      break;
+    }
+
     case "start": { // from StartBt.
       if ($.state.phase !== "lobby") break;
       const participants = $.state.participants;
@@ -239,10 +290,11 @@ $.onReceive((messageType, arg, sender) => {
         }
       }
 
-      const { impostors, crews, engineers } = assignRoles(participants, imposterNum);
+      const { impostors, crews, specialRolePlayers } =
+        assignRoles(participants, imposterNum, $.state.roleCounts);
       $.state.impostors = impostors;
       $.state.crews = crews;
-      $.state.engineers = engineers;
+      $.state.specialRolePlayers = specialRolePlayers;
       $.state.impostorIds = impostors.map(p => p.id);
       $.state.phase = "playing";
       setCanStart(false);
@@ -522,21 +574,26 @@ $.onReceive((messageType, arg, sender) => {
       break;
     }
 
-    case "requestVent":{ // from vent. arg: ベントを利用するプレイヤーのHd
+    case "requestVent": { // from vent. arg: ベントを利用するプレイヤーのHandle
       const player = arg;
-      if ($.state.phase === "lobby"){
+      if (!player) break;
+
+      if ($.state.phase === "lobby") {
         sender.send("ventUse", player);
+        break;
       }
       if ($.state.phase !== "playing") break;
 
       const alivePlayers = [...$.state.impostors, ...$.state.crews];
       if (!alivePlayers.some(p => p.id === player.id)) break;
 
-      const canUse = 
-        $.state.impostors.some(p => p.id === player.id) ||
-        $.state.engineers.some(p => p.id === player.id);
+      const isImposter = $.state.impostors.some(p => p.id === player.id);
+      const hasVentAbility = Object.entries(ROLE_DEFINITIONS).some(([roleId, def]) => {
+        if (!(def.abilities ?? []).includes("vent")) return false;
+        return ($.state.specialRolePlayers[roleId] ?? []).some(p => p.id === player.id);
+      });
 
-      if(canUse){
+      if (isImposter || hasVentAbility) {
         sender.send("ventUse", player);
       }
       break;
@@ -793,7 +850,7 @@ function returnToLobby() {
   $.state.impostors = [];
   $.state.crews = [];
   $.state.deadPlayers = [];
-  $.state.engineers = [];
+  $.state.specialRolePlayers = {};
   $.state.votes = {};
   $.state.taskStatus = {};
   $.state.ghosts = {};
@@ -1256,24 +1313,51 @@ function checkTaskWin() {
   return true;
 }
 
-function assignRoles(participants, imposterNum) {
-  const shuffled = [...participants];
+function shufflePlayers(players) {
+  const shuffled = [...players];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
+  return shuffled;
+}
 
+function assignRoles(participants, imposterNum, roleCounts) {
+  const shuffled = shufflePlayers(participants);
   const impostors = shuffled.slice(0, imposterNum);
   const crews = shuffled.slice(imposterNum);
+
+  // 陣営ごとの候補をシャッフルしておく。
+  // 同じプレイヤーに複数の特殊役職が重複しないよう、割り当てた人は候補から除く。
+  const candidates = {
+    crew: shufflePlayers(crews),
+    imposter: shufflePlayers(impostors)
+  };
+  const specialRolePlayers = {};
+
+  for (const [roleId, def] of Object.entries(ROLE_DEFINITIONS)) {
+    const pool = candidates[def.faction];
+    const requested = Math.max(0, Math.floor(roleCounts[roleId] ?? def.defaultCount ?? 0));
+    const count = Math.min(requested, pool.length);
+    const assigned = pool.splice(0, count);
+
+    specialRolePlayers[roleId] = assigned;
+
+    if (count < requested) {
+      $.log("[役職割り当て] " + def.name + " は人数不足のため " + count + "人に割り当て");
+    }
+  }
 
   impostors.forEach(p => p.send("assignRoles", "imposter"));
   crews.forEach(p => p.send("assignRoles", "crew"));
 
-  const engineers = crews.length > 0
-    ? [crews[Math.floor(Math.random() * crews.length)]]
-    : [];
+  // assignRoles の後に特殊役職を送ることで、PlayerScript側の初期化で消されないようにする。
+  for (const [roleId, players] of Object.entries(specialRolePlayers)) {
+    const def = ROLE_DEFINITIONS[roleId];
+    for (const player of players) {
+      player.send("assignSpecialRole", { id: roleId, name: def.name });
+    }
+  }
 
-  engineers.forEach(p => p.send("assignSpecialRole", "engineer"));
-
-  return { impostors, crews, engineers };
+  return { impostors, crews, specialRolePlayers };
 }

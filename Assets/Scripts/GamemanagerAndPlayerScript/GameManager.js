@@ -137,7 +137,8 @@ $.onStart(() => {
   $.state.impostors = [];
   $.state.crews = [];
   $.state.deadPlayers = [];
-  $.state.specialRolePlayers = {}; // { roleId: PlayerHandle[] }\n  $.state.roleCounts = createDefaultRoleCounts();
+  $.state.specialRolePlayers = {}; // { roleId: PlayerHandle[] }
+  $.state.roleCounts = createDefaultRoleCounts();
   $.state.taskStatus = {};     // { プレイヤーID: { fake, tasks: [...] } } 全員のタスクの進み具合
   $.state.taskRemain = 1;      // 0~1
   $.state.allTask = 1;

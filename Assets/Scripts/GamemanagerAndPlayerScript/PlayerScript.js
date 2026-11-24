@@ -45,12 +45,24 @@ function setRaycastTarget(component, value) {
 }
 
 const ROLE_NAMES = { imposter: "インポスター", crew: "クルー" };
+const SPECIAL_ROLE_NAMES = {
+  engineer: "エンジニア"
+};
+
+function displayRoleName() {
+  if (role === "crew" && specialRole) {
+    return roleName(role) + "（" + SPECIAL_ROLE_NAMES[specialRole] + "）";
+  }
+  return roleName(role);
+}
+
 function roleName(r) { return ROLE_NAMES[r] ?? r; }
 
 const gameManagerId = _.worldItemReference("gameManager");
 _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE); // ゲームが始まって役職が届くまでは、普通の速さ
 
 let role = "";
+let specialRole = "";
 let displayCount = -1;       // 役職表示("あなたは○○")を出しておく残り秒数
 let phaseTimeLeft = -1;      // 会議/投票の残り時間（ローカルでカウントダウン表示するだけ、判定はGameManager側）
 let resultDisplayCount = -1; // 投票結果/勝敗結果を表示しておく残り秒数
@@ -379,11 +391,23 @@ _.onReceive((messageType, arg, sender) => {
       _.cameraHandle.setPerspectiveSwitchingLocked(true);
       _.cameraHandle.switchToFirstPersonView();
       role = arg;
+      specialRole = ""; // 新しいゲームでは特殊役職をリセット
+
       _.setMoveSpeedRate(GAME_MOVE_SPEED_RATE);
       assignRolesObject.unityProp.text = "あなたは" + roleName(role);
       displayCount = 5;
+
       setKillButtonVisible(role === "imposter");
       setTaskRemainVisible(true);
+      break;
+
+    case "assignSpecialRole":
+      specialRole = arg;
+
+      // 役職発表中なら表示を更新
+      if (displayCount >= 0) {
+        assignRolesObject.unityProp.text = "あなたは" + displayRoleName();
+      }
       break;
 
     case "start":
@@ -407,6 +431,7 @@ _.onReceive((messageType, arg, sender) => {
       _.setPosition(WAITING_ROOM_POSITION);
 
       role = "";
+      specialRole = "";
       assignRolesObject.unityProp.text = "";
       roleObject.unityProp.text = "";
       remainObject.unityProp.text = "";
@@ -497,6 +522,7 @@ _.onReceive((messageType, arg, sender) => {
         clearSabotageUi();
         _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE);
         role = "";
+        specialRole = "";
         roleObject.unityProp.text = "";
         remainObject.unityProp.text = "";
         resumeKillButtonAfterResult = false;
@@ -658,7 +684,7 @@ _.onFrame((deltaTime) => {
     if (displayCount <= 0) {
       displayCount = -1;
       assignRolesObject.unityProp.text = "";
-      roleObject.unityProp.text = roleName(role);
+      roleObject.unityProp.text = displayRoleName();
     }
   }
 

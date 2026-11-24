@@ -115,6 +115,7 @@ $.onStart(() => {
   $.state.impostors = [];
   $.state.crews = [];
   $.state.deadPlayers = [];
+  $.state.engineers = [];
   $.state.taskStatus = {};     // { プレイヤーID: { fake, tasks: [...] } } 全員のタスクの進み具合
   $.state.taskRemain = 1;      // 0~1
   $.state.allTask = 1;
@@ -238,9 +239,10 @@ $.onReceive((messageType, arg, sender) => {
         }
       }
 
-      const { impostors, crews } = assignRoles(participants, imposterNum);
+      const { impostors, crews, engineers } = assignRoles(participants, imposterNum);
       $.state.impostors = impostors;
       $.state.crews = crews;
+      $.state.engineers = engineers;
       $.state.impostorIds = impostors.map(p => p.id);
       $.state.phase = "playing";
       setCanStart(false);
@@ -521,11 +523,21 @@ $.onReceive((messageType, arg, sender) => {
     }
 
     case "requestVent":{ // from vent. arg: ベントを利用するプレイヤーのHd
+      const player = arg;
       if ($.state.phase === "lobby"){
-        sender.send("ventUse", arg);
+        sender.send("ventUse", player);
       }
-      if($.state.phase === "playing" && $.state.impostors.some(p => p.id === arg.id)){
-        sender.send("ventUse", arg);
+      if ($.state.phase !== "playing") break;
+
+      const alivePlayers = [...$.state.impostors, ...$.state.crews];
+      if (!alivePlayers.some(p => p.id === player.id)) break;
+
+      const canUse = 
+        $.state.impostors.some(p => p.id === player.id) ||
+        $.state.engineers.some(p => p.id === player.id);
+
+      if(canUse){
+        sender.send("ventUse", player);
       }
       break;
     }
@@ -781,6 +793,7 @@ function returnToLobby() {
   $.state.impostors = [];
   $.state.crews = [];
   $.state.deadPlayers = [];
+  $.state.engineers = [];
   $.state.votes = {};
   $.state.taskStatus = {};
   $.state.ghosts = {};
@@ -1256,5 +1269,11 @@ function assignRoles(participants, imposterNum) {
   impostors.forEach(p => p.send("assignRoles", "imposter"));
   crews.forEach(p => p.send("assignRoles", "crew"));
 
-  return { impostors, crews };
+  const engineers = crews.length > 0
+    ? [crews[Math.floor(Math.random() * crews.length)]]
+    : [];
+
+  engineers.forEach(p => p.send("assignSpecialRole", "engineer"));
+
+  return { impostors, crews, engineers };
 }

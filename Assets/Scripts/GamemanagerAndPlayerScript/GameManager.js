@@ -260,7 +260,7 @@ $.onReceive((messageType, arg, sender) => {
       $.state.roleCounts = counts;
 
       // ボタン側で表示を更新できるよう、変更後の人数を返信
-      sender.send("roleCountChanged", { roleId: arg.roleId, count: next });
+      sender.send("roleCountChanged", { roleId: arg.roleId, name: def.name, count: next });
       break;
     }
 
@@ -268,6 +268,7 @@ $.onReceive((messageType, arg, sender) => {
       if (typeof arg !== "string" || !ROLE_DEFINITIONS[arg]) break;
       sender.send("roleCountChanged", {
         roleId: arg,
+        name: ROLE_DEFINITIONS[arg].name,
         count: $.state.roleCounts[arg] ?? ROLE_DEFINITIONS[arg].defaultCount ?? 0
       });
       break;

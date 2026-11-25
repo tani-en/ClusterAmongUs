@@ -9,6 +9,8 @@ const RESULT_DISPLAY_TIME = 5; // 投票結果/勝敗結果を表示しておく
 const GAME_MOVE_SPEED_RATE = 0.5;   // ゲーム中(役職がある間)の移動速度
 const NORMAL_MOVE_SPEED_RATE = 1;   // ゲーム外(ロビー・死亡後・追放後・ゲーム終了後)の移動速度
 
+const WINNER_NAMES = { imposter: "インポスター", crew: "クルー", jester: "ジェスター" }; // ファイルの上の方に追加
+
 const FORWARD_OFFSET = 1; // インポスターの前方何mにセンサーを置くか
 
 // サボタージュボタンの、画面上の基本位置(Unityで置いた位置)。
@@ -544,10 +546,10 @@ _.onReceive((messageType, arg, sender) => {
       meetingObject.unityProp.text = "";
       roleObject.unityProp.text = "";
       remainObject.unityProp.text = "";
-      resultObject.unityProp.text =
+            resultObject.unityProp.text =
         arg.winner === "中止"
         ? "過半数が同意したので中止しました"
-        : (arg.winner === "imposter" ? "インポスター" : "クルー") + "の勝利！";
+        : (WINNER_NAMES[arg.winner] ?? arg.winner) + "の勝利！";
       resultDisplayCount = RESULT_DISPLAY_TIME;
       resumeKillButtonAfterResult = false;
       setKillButtonVisible(false);

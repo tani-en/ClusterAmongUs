@@ -1,5 +1,3 @@
-// 役職ごとに1つ設置する人数表示・変更の中継スクリプト。
-// 役職を増やすときは ROLE_ID を変更したManagerを複製する。
 const ROLE_ID = "engineer";
 const GAME_MANAGER = $.worldItemReference("gameManager");
 const TEXT_VIEW = $.subNode("Text");

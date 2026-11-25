@@ -21,6 +21,13 @@ const ROLE_DEFINITIONS = {
     defaultCount: 1,
     maxCount: 10,
     abilities: ["vent"] // ベントを無制限に使用できる
+  },
+  jester: {
+    faction: "neutral",
+    name: "ジェスター",
+    defaultCount: 0,
+    maxCount: 1,
+    abilities: []
   }
 };
 const MAX_SPECIAL_ROLE_COUNT = 10;
@@ -320,11 +327,13 @@ $.onReceive((messageType, arg, sender) => {
 
       // task配布
       assignTasks(impostors, crews);
-      sendTrashPlaces(crews);
-      sendPianoMelodies(crews);
-      sendBurgerOrders(crews);
-      sendDiceTargets(crews);
-      sendLightOrders(crews);
+      const neutralIds = neutralPlayerIds();
+      const realCrews = crews.filter(p => !neutralIds.has(p.id));
+      sendTrashPlaces(realCrews);
+      sendPianoMelodies(realCrews);
+      sendBurgerOrders(realCrews);
+      sendDiceTargets(realCrews);
+      sendLightOrders(realCrews);
       for (const p of [...impostors, ...crews]) {
         p.send("taskRemain", 1);
         sendTaskList(p);
@@ -750,6 +759,7 @@ function finishVoting() {
   const alivePlayers = [...$.state.impostors, ...$.state.crews];
   let ejectedPlayer = null;
   let ejectedRole = null;
+  let jesterWon = false;
 
   if (ejectedId) {
     ejectedPlayer = alivePlayers.find(p => p.id === ejectedId) ?? null;
@@ -760,6 +770,7 @@ function finishVoting() {
     } else {
       const wasImpostor = $.state.impostors.some(p => p.id === ejectedId);
       ejectedRole = wasImpostor ? "imposter" : "crew";
+      jesterWon = ($.state.specialRolePlayers.jester ?? []).some(p => p.id === ejectedId);
 
       $.state.impostors = $.state.impostors.filter(p => p.id !== ejectedId);
       $.state.crews = $.state.crews.filter(p => p.id !== ejectedId);
@@ -786,6 +797,7 @@ function finishVoting() {
   syncKillAreas();
   $.worldItemReference("meetingBlock").send("hidePos", null);
 
+  if (jesterWon) { endGame("jester"); return; }
   if (checkWinCondition()) return;
   if (checkTaskWin()) return;
 
@@ -825,7 +837,7 @@ function endGame(winner) {
   for (const p of everyone) {
     p.send("gameEnd", { winner: winner, wasDead: deadIds.has(p.id) });
   }
-  updateStatusBoard(winner === "crew" ? "クルーの勝利!" : winner === "imposter" ? "インポスターの勝利!" : "ゲームを中止しました");
+  updateStatusBoard(winner === "crew" ? "クルーの勝利!" : winner === "imposter" ? "インポスターの勝利!" : winner === "jester" ? "ジェスターの勝利!" : "ゲームを中止しました");
 
   for (const sensor of KILLSENSORS) {
     sensor.send("unbind", null);
@@ -990,12 +1002,22 @@ function formatBurger(order) {
   return order.map(type => BURGER_NAMES[type]).join(" → ");
 }
 
+function neutralPlayerIds() {
+  const ids = new Set();
+  for (const [roleId, def] of Object.entries(ROLE_DEFINITIONS)) {
+    if (def.faction !== "neutral") continue;
+    for (const p of ($.state.specialRolePlayers[roleId] ?? [])) ids.add(p.id);
+  }
+  return ids;
+}
+
 function assignTasks(impostors, crews) {
   const status = {};
   let total = 0;
+  const neutralIds = neutralPlayerIds();
   const everyone = [
     ...impostors.map(p => ({ p, fake: true })),
-    ...crews.map(p => ({ p, fake: false }))
+    ...crews.map(p => ({ p, fake: neutralIds.has(p.id) }))
   ];
   for (const { p, fake } of everyone) {
     const tasks = [];
@@ -1334,6 +1356,7 @@ function assignRoles(participants, imposterNum, roleCounts) {
     crew: shufflePlayers(crews),
     imposter: shufflePlayers(impostors)
   };
+  candidates.neutral = candidates.crew;
   const specialRolePlayers = {};
 
   for (const [roleId, def] of Object.entries(ROLE_DEFINITIONS)) {

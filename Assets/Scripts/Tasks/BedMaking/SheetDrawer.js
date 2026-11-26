@@ -1,12 +1,13 @@
 const MAXTEMPLATE = 5;
 const TASK_STEPS = 2;
-const TASK_ID = "sheet"; // GameManager.js の TASK_DEFS の id
+const TASK_ID = "sheet";
 
-const BEDS = [$.worldItemReference("bed"), $.worldItemReference("bed1")];
+// ベッドは BedMaker が作り直すので、一覧は BedMaker から "bedHd" で受け取る($.state.beds)
 const SHEETTEMPLATE = new WorldItemTemplateId("sheet");
 
 
 $.onStart(() => {
+  $.state.beds = [];
   $.state.sheets     = [];
   $.state.stateTask = {};
 });
@@ -23,7 +24,7 @@ $.onInteract(() => {
 
     const sheetHandle = $.createItem(SHEETTEMPLATE, markerPosition, markerRotation);
     sheets.push(sheetHandle);
-    sheetHandle.send("beds", BEDS);
+    sheetHandle.send("beds", $.state.beds);
     $.state.sheets = sheets;
   }
 
@@ -48,6 +49,14 @@ $.onReceive((messageType, arg, sender) => {
       $.state.stateTask = {};
       break;
 
+    case "bedHd": { // from BedMaker. arg: 新しいベッドのハンドルの一覧
+      $.state.beds = arg;
+      for (const sheet of $.state.sheets) {
+        if (sheet.exists()) sheet.send("beds", arg); // すでに出ているシーツにも、新しい一覧を教える
+      }
+      break;
+    }
+
   }
 });
 
@@ -62,7 +71,6 @@ function taskProgress(player){
   }
   $.state.stateTask = stateTask;
 
-  $.log(stateTask[player.id])
   if (stateTask[player.id] === TASK_STEPS){
     $.worldItemReference("gameManager").send("taskStep", {
       taskId: TASK_ID,

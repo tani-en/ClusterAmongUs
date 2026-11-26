@@ -131,6 +131,7 @@ const TASK_DEFS = {
     { id: "plants", name: "水やり", room: "温室", label: "植物6つにじょうろで水をやる" },
     { id: "dice", name: "サイコロを振る", dice: true, room: "研究室", label: "サイコロで指定の目を出す" },
     { id: "faucet", name: "蛇口を閉める", room: "キッチン", label: "出しっぱなしの蛇口を閉める" },
+    { id: "sleep", name: "ベットで寝る", room: "寝室B", label: "ベッドで30秒睡眠をとる" },
   ],
 };
 
@@ -702,6 +703,7 @@ function startMeeting(reporter, reportedCorpseId) {
   const alivePlayers = [...$.state.impostors, ...$.state.crews];
   for (const p of alivePlayers) {
     p.setPosition(MEETING_ROOM_POSITION);
+    $.worldItemReference("bedMaker").send("meetingStart", null);
     p.send("meetingStart", {
       reporterName: reporter.userDisplayName,
       corpseId: reportedCorpseId,

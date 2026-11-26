@@ -1,4 +1,4 @@
-const MAX_TASKS = 16;
+const MAX_TASKS = 17;
 const TEXTVIEW = $.subNode("Text");
 
 $.onStart(() => {

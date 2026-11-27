@@ -82,7 +82,7 @@ const WINE_GLASSES = 3; // 注ぐグラスの数(WineManager.js の GLASSES と�
 const MELODIES = [
   { name: "メリーさんの羊", notes: [2, 1, 0, 1, 2, 2, 2, 1, 1, 1, 2, 4, 4] },       // ミレドレミミミ レレレ ミソソ
   { name: "かえるの合唱", notes: [0, 1, 2, 3, 2, 1, 0, 2, 3, 4, 5, 4, 3, 2] },     // ドレミファミレド ミファソラソファミ
-  { name: "きらきら星", notes: [0, 0, 4, 4, 5, 5, 4, 3, 3, 2, 1, 1, 0] },          // ドドソソララソ ファファミレレド
+  { name: "きらきら星", notes: [0, 0, 4, 4, 5, 5, 4, 3, 3, 2, 2, 1, 1, 0] },          // ドドソソララソ ファファミミレレド
   { name: "ちょうちょ", notes: [4, 2, 2, 3, 1, 1, 0, 1, 2, 3, 4, 4, 4] },          // ソミミ ファレレ ドレミファソソソ
 ];
 const PIANOS = ["piano0", "piano1", "piano2", "piano3"].map(name => $.worldItemReference(name));
@@ -146,6 +146,8 @@ $.onStart(() => {
   $.state.crews = [];
   $.state.deadPlayers = [];
   $.state.specialRolePlayers = {}; // { roleId: PlayerHandle[] }
+  $.state.warpQueue = [];      // [{ player, pos }] 順番にワープさせる待ち行列(setPosition のレート制限対策)
+  $.state.warpWait = 0;
   $.state.roleCounts = createDefaultRoleCounts();
   $.state.taskStatus = {};     // { プレイヤーID: { fake, tasks: [...] } } 全員のタスクの進み具合
   $.state.taskRemain = 1;      // 0~1
@@ -166,6 +168,8 @@ $.onStart(() => {
 
 
 $.onUpdate(deltaTime => {
+  updateWarps(deltaTime);
+
   if ($.state.phase === "lobby") {
     updateLobby(deltaTime);
     return;
@@ -338,7 +342,7 @@ $.onReceive((messageType, arg, sender) => {
       for (const p of [...impostors, ...crews]) {
         p.send("taskRemain", 1);
         sendTaskList(p);
-        p.setPosition(MEETING_ROOM_POSITION);
+        warpPlayer(p, MEETING_ROOM_POSITION);
       }
 
 
@@ -403,6 +407,7 @@ $.onReceive((messageType, arg, sender) => {
         targetName = target ? target.name : arg; // 見つからなければIDのまま表示
       }
       $.log(voterName + " が投票: " + targetName);
+      buildVoteResultText(voterName, targetName, arg);
       //log用ここまで
       const votes = { ...$.state.votes, [sender.id]: arg }; // arg: targetId または "skip"
       $.state.votes = votes;
@@ -693,6 +698,7 @@ function startMeeting(reporter, reportedCorpseId) {
 
   $.worldItemReference("meetingBlock").send("blockPos", null);
   clearCorpseMarkers();
+  if ($.state.sabotage.type === "blackout") $.worldItemReference("blackOutmaker").send("blackOutFinish", null); // 会議中は暗幕を消す(会議明けに sendSabotageState で作り直す)
 
   // 通報された死体のIDから名前を引く（緊急ボタンでの通報ならnullのまま)
   const corpse = reportedCorpseId
@@ -702,8 +708,7 @@ function startMeeting(reporter, reportedCorpseId) {
 
   const alivePlayers = [...$.state.impostors, ...$.state.crews];
   for (const p of alivePlayers) {
-    p.setPosition(MEETING_ROOM_POSITION);
-    $.worldItemReference("bedMaker").send("meetingStart", null);
+    warpPlayer(p, MEETING_ROOM_POSITION);
     p.send("meetingStart", {
       reporterName: reporter.userDisplayName,
       corpseId: reportedCorpseId,
@@ -711,9 +716,15 @@ function startMeeting(reporter, reportedCorpseId) {
       duration: DISCUSSION_TIME
     });
   }
+  $.worldItemReference("bedMaker").send("meetingStart", null); // ベッドの作り直し(1回だけ送る)
   $.log(reporter.userDisplayName + " が通報しました" + (corpseName ? "（" + corpseName + "の遺体）" : ""));
 }
 
+
+// 会議中に「誰が誰に投票したか」を表示するアイテム(VoteResulttext.js)へ知らせる
+function buildVoteResultText(voterName, targetName, arg) {
+  $.worldItemReference("voteResult").send("result", { voterName: voterName, targetName: targetName, id: arg });
+}
 
 function startVoting() {
   $.state.phase = "voting";
@@ -724,6 +735,7 @@ function startVoting() {
   const alivePlayers = [...$.state.impostors, ...$.state.crews];
   const candidates = alivePlayers.map(p => ({ id: p.id, name: p.userDisplayName }));
   $.state.candidates = candidates;
+  $.worldItemReference("voteResult").send("voteStart", { candidates: candidates }); // 投票結果の表示に、候補者を教える
   for (const p of alivePlayers) {
     p.send("votingStart", { candidates, duration: VOTING_TIME });
   }
@@ -733,6 +745,7 @@ function startVoting() {
 function finishVoting() {
   // 集計中に追加でvoteが来ないようにphaseをtallyにする
   $.state.phase = "tally";
+  $.worldItemReference("voteResult").send("meetingFinish", null);
   const votes = $.state.votes;
 
   const tally = {};
@@ -777,7 +790,7 @@ function finishVoting() {
       $.state.impostors = $.state.impostors.filter(p => p.id !== ejectedId);
       $.state.crews = $.state.crews.filter(p => p.id !== ejectedId);
       $.state.deadPlayers = [...$.state.deadPlayers, ejectedPlayer];
-      ejectedPlayer.setPosition(WAITING_ROOM_POSITION);
+      warpPlayer(ejectedPlayer, WAITING_ROOM_POSITION);
       if (wasImpostor) dropTasksOf(ejectedId); // インポスターのフェイクタスクは、数えない
       else startGhostTasks(ejectedId);         // 追放されたクルーのタスクは、待機室での作業と時間経過で進める
 
@@ -809,7 +822,7 @@ function finishVoting() {
 
   const survivors = [...$.state.impostors, ...$.state.crews];
   for (const p of survivors) {
-    p.setPosition(MEETING_ROOM_POSITION);
+    warpPlayer(p, MEETING_ROOM_POSITION);
   }
 }
 
@@ -827,6 +840,33 @@ function checkWinCondition() {
     return true;
   }
   return false;
+}
+
+// ===== ワープの待ち行列 =====
+// setPosition は短い間に何度も呼ぶとレート制限に掛かるので、1人ずつ間を空けて実行する。
+// 同じプレイヤーの古い予約は、新しい予約で置き換える。
+const WARP_INTERVAL = 0.15; // 1人ぶんのワープをする間隔(秒)
+
+function warpPlayer(player, pos) {
+  const queue = $.state.warpQueue.filter(w => w.player.id !== player.id);
+  queue.push({ player: player, pos: pos });
+  $.state.warpQueue = queue;
+}
+
+function updateWarps(deltaTime) {
+  const queue = $.state.warpQueue;
+  if (queue.length === 0) { $.state.warpWait = 0; return; }
+  const wait = $.state.warpWait - deltaTime;
+  if (wait > 0) { $.state.warpWait = wait; return; }
+
+  const w = queue.shift();
+  $.state.warpQueue = queue;
+  $.state.warpWait = WARP_INTERVAL;
+  try {
+    if (w.player.exists()) w.player.setPosition(w.pos);
+  } catch (e) {
+    $.log("ワープに失敗: " + e);
+  }
 }
 
 function endGame(winner) {
@@ -859,7 +899,7 @@ function returnToLobby() {
     .filter(p => p.exists()); // ゲーム中に退室したプレイヤーを除外
 
   for (const p of survivors) {
-    p.setPosition(WAITING_ROOM_POSITION);
+    warpPlayer(p, WAITING_ROOM_POSITION);
   }
 
   $.state.impostors = [];
@@ -1156,6 +1196,7 @@ function startSabotage(type) {
 function sendSabotageState() {
   const sab = $.state.sabotage;
   if (!sab.type) return;
+  if (sab.type === "blackout") $.worldItemReference("blackOutmaker").send("blackOutStart", $.state.crews); // 暗幕は停電のときだけ
   for (const p of aliveList()) p.send("sabotageStart", { type: sab.type, seconds: Math.ceil(sab.timer) });
 }
 
@@ -1167,12 +1208,14 @@ function endSabotage() {
   sab.cool = SABOTAGE_COOLDOWN;
   sab.ready = false;
   $.state.sabotage = sab;
+  $.worldItemReference("blackOutmaker").send("blackOutFinish", $.state.crews);
   for (const p of aliveList()) p.send("sabotageEnd", null);
   updateStatusBoard();
 }
 
 // ゲーム終了のとき: 全員の画面から、サボタージュの表示を消す
 function clearSabotage() {
+  $.worldItemReference("blackOutmaker").send("blackOutFinish", $.state.crews);
   const everyone = [...$.state.impostors, ...$.state.crews, ...$.state.deadPlayers].filter(p => p.exists());
   for (const p of everyone) p.send("sabotageEnd", null);
   $.state.sabotage = newSabotage(0);

@@ -19,23 +19,12 @@ const FORWARD_OFFSET = 1; // インポスターの前方何mにセンサーを�
 const SAB_BLACKOUT_DEFAULT_POS = new Vector2(-250, 150);
 const SAB_REACTOR_DEFAULT_POS = new Vector2(-150, 200);
 
-// 停電を直す配電盤の位置(ワールド座標)。Unity で配電盤を選んで、Inspector の Transform の Position を写す。
-// 配電盤が動かないので、ここに固定で書く。複数あるときは、{ x, y, z } を並べる(一番近いものを指す)。
-const BLACKOUT_TARGETS = [
-  { x: -35.1689987, y: 0.90200001, z: -0.671999991 },   // ← 配電盤の位置に書き換える
-];
-// 停電中、暗幕の上に出す「配電盤の方向を指す矢印」(Player Local UI の blackoutArrow / blackoutArrowText)
-let arrowRect = null, arrowImage = null, arrowText = null;
-let arrowReady = false;
-let arrowTries = 0;
-let arrowRetryWait = 0;
-
 // サボタージュUI用の状態変数
 let sabotageUiReady = false;
 let sabotageTries = 0;
 let sabotageRetryWait = 0;       // 見つかるまでの再試行の間隔を空けるためのタイマー
 let sabBlackoutBtn = null, sabReactorBtn = null;
-let sabotageText = null, sabotageOverlayRect = null, sabotageOverlayImage = null;
+let sabotageText = null;
 let sabotageButtonsWanted = false;
 let sabotageReady = false;
 let sabotageActive = null;
@@ -65,6 +54,7 @@ let displayCount = -1;       // 役職表示("あなたは○○")を出して�
 let phaseTimeLeft = -1;      // 会議/投票の残り時間（ローカルでカウントダウン表示するだけ、判定はGameManager側）
 let resultDisplayCount = -1; // 投票結果/勝敗結果を表示しておく残り秒数
 let resumeKillButtonAfterResult = false; // 会議明けにキルボタンを復帰させるかどうか
+let meetingLock = false;     // 会議・投票中は true(キルとサボタージュを押しても、送らない)
 let killCooldownLeft = -1;   // キルクールタイムの残り秒数（判定自体はKillSensor側が権威）
 let killButtonShown = false; // 現在キルボタンを表示すべき状態かどうか（クールタイム管理用）
 
@@ -215,7 +205,7 @@ function tryInitButtons() {
     });
     killButton.onClick(isDown => {
       if (!isDown) return;
-      if (role !== "imposter") return;
+      if (role !== "imposter" || meetingLock) return;
       _.sendTo(gameManagerId, "requestKill", null);
     });
 
@@ -234,12 +224,12 @@ function trySabotageUi() {
   if (sabotageUiReady) return true;
   sabotageTries++;
   try {
-    const names = ["sabotageBlackoutButton", "sabotageReactorButton", "sabotageText", "blackoutOverlay"];
+    const names = ["sabotageBlackoutButton", "sabotageReactorButton", "sabotageText"];
     const objs = names.map(n => _.playerLocalObject(n));
     for (let i = 0; i < names.length; i++) {
       if (!objs[i]) return false;
     }
-    const bObj = objs[0], rObj = objs[1], tObj = objs[2], oObj = objs[3];
+    const bObj = objs[0], rObj = objs[1], tObj = objs[2];
 
     const make = (obj, defaultPos) => {
       const rect = obj.getUnityComponent("RectTransform");
@@ -260,16 +250,13 @@ function trySabotageUi() {
     sabotageText = tObj.getUnityComponent("Text");
     sabotageText.unityProp.text = "";
     sabotageText.unityProp.raycastTarget = false;
-    sabotageOverlayRect = oObj.getUnityComponent("RectTransform");
-    sabotageOverlayImage = oObj.getUnityComponent("Image");
-    setRaycastTarget(sabotageOverlayImage, false);
 
     sabBlackoutBtn.button.onClick(isDown => {
-      if (!isDown || role !== "imposter") return;
+      if (!isDown || role !== "imposter" || meetingLock) return;
       _.sendTo(gameManagerId, "requestSabotage", "blackout");
     });
     sabReactorBtn.button.onClick(isDown => {
-      if (!isDown || role !== "imposter") return;
+      if (!isDown || role !== "imposter" || meetingLock) return;
       _.sendTo(gameManagerId, "requestSabotage", "reactor");
     });
 
@@ -281,72 +268,7 @@ function trySabotageUi() {
   }
 }
 
-function tryInitArrow() {
-  if (arrowReady) return true;
-  arrowTries++;
-  try {
-    const aObj = _.playerLocalObject("blackoutArrow");
-    const tObj = _.playerLocalObject("blackoutArrowText");
-    if (!aObj || !tObj) return false;
-    arrowRect = aObj.getUnityComponent("RectTransform");
-    arrowImage = aObj.getUnityComponent("Image");
-    arrowText = tObj.getUnityComponent("Text");
-    if (!arrowRect || !arrowText) return false;
-    setRaycastTarget(arrowImage, false);
-    arrowText.unityProp.raycastTarget = false;
-    arrowText.unityProp.text = "";
-    arrowRect.unityProp.localScale = HIDDEN_SCALE;
-    arrowReady = true;
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-// 停電中で、クルーのときだけ、矢印を出す
-function arrowWanted() {
-  const a = sabotageActive;
-  return !!(a && a.type === "blackout" && role === "crew" && BLACKOUT_TARGETS.length > 0);
-}
-
-function applyArrow() {
-  if (!arrowReady) return;
-  if (!arrowWanted()) {
-    arrowRect.unityProp.localScale = HIDDEN_SCALE;
-    arrowText.unityProp.text = "";
-  } else {
-    arrowRect.unityProp.localScale = SHOWN_SCALE;
-  }
-}
-
-// 毎フレーム: 一番近い配電盤の方向に、矢印を回す
-function updateArrow() {
-  if (!arrowReady || !arrowWanted()) return;
-  const pos = _.getPosition();
-  const rot = _.getRotation();
-  if (!pos || !rot) return;
-
-  let best = null, bestDist = Infinity;
-  for (const t of BLACKOUT_TARGETS) {
-    const dx = t.x - pos.x, dz = t.z - pos.z;
-    const d = Math.sqrt(dx * dx + dz * dz);
-    if (d < bestDist) { bestDist = d; best = { dx: dx, dz: dz }; }
-  }
-  if (!best) return;
-
-  const forward = new Vector3(0, 0, 1).applyQuaternion(rot);
-  const yaw = Math.atan2(forward.x, forward.z) * 180 / Math.PI;      // 自分の向き
-  const bearing = Math.atan2(best.dx, best.dz) * 180 / Math.PI;      // 配電盤の方角
-  let delta = bearing - yaw;
-  while (delta > 180) delta -= 360;
-  while (delta < -180) delta += 360;
-  // 右にあるときは、矢印を右(時計回り)に傾ける
-  arrowRect.unityProp.localRotation = new Quaternion().setFromEulerAngles(new Vector3(0, 0, -delta));
-  arrowText.unityProp.text = "配電盤 " + Math.round(bestDist) + "m";
-}
-
 function applySabotageUi() {
-  applyArrow();
   if (!sabotageUiReady) return;
   const visible = sabotageButtonsWanted;
   for (const b of [sabBlackoutBtn, sabReactorBtn]) {
@@ -365,7 +287,6 @@ function applySabotageUi() {
       : "リアクター\nあと " + a.seconds + "秒";
   }
   sabotageText.unityProp.text = text;
-  sabotageOverlayRect.unityProp.localScale = (a && a.type === "blackout" && role === "crew") ? SHOWN_SCALE : HIDDEN_SCALE;
 }
 
 function setSabotageButtonsVisible(visible) {
@@ -380,14 +301,12 @@ function clearSabotageUi() {
 }
 
 trySabotageUi();
-tryInitArrow();
 buttonsReady = tryInitButtons();
 
 _.onReceive((messageType, arg, sender) => {
   switch (messageType) {
     case "assignRoles": // from gamemanager. arg: "imposter" or "crew"
-      _.cameraHandle.setPerspectiveSwitchingLocked(true);
-      _.cameraHandle.switchToFirstPersonView();
+      meetingLock = false;
       role = arg;
       specialRole = ""; // 新しいゲームでは特殊役職をリセット
       specialRoleName = "";
@@ -426,7 +345,6 @@ _.onReceive((messageType, arg, sender) => {
 
     case "kill": // from gamemanager. 
       clearSabotageUi();
-      _.cameraHandle.setPerspectiveSwitchingLocked(false);
       _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE);
       _.setPosition(WAITING_ROOM_POSITION);
 
@@ -452,6 +370,7 @@ _.onReceive((messageType, arg, sender) => {
       break;
 
     case "meetingStart":
+      meetingLock = true;
       sabotageActive = null; applySabotageUi();
       meetingObject.unityProp.text =
         (arg.corpseName
@@ -511,6 +430,7 @@ _.onReceive((messageType, arg, sender) => {
       break;
 
     case "votingResult": // from gamemanager. arg.ejectedName: 追放されたプレイヤーの名前, arg.ejectedRole: 同じく役職, arg.wasEjected: 自身が追放されたか
+      meetingLock = false; // 会議が終わった
       setVoteButtonsVisible(false);
       meetingObject.unityProp.text = "";
       resultObject.unityProp.text = arg.ejectedName
@@ -537,10 +457,10 @@ _.onReceive((messageType, arg, sender) => {
       break;
 
     case "gameEnd":
+      meetingLock = false;
       clearSabotageUi();
       specialRole = "";
       specialRoleName = "";
-      _.cameraHandle.setPerspectiveSwitchingLocked(false);
       if(!arg.wasDead) _.setMoveSpeedRate(NORMAL_MOVE_SPEED_RATE);
       setVoteButtonsVisible(false);
       meetingObject.unityProp.text = "";
@@ -651,14 +571,6 @@ _.onFrame((deltaTime) => {
       }
     }
   }
-  if (!arrowReady) {
-    arrowRetryWait -= deltaTime;
-    if (arrowRetryWait <= 0) {
-      arrowRetryWait = arrowTries < 300 ? 0 : 0.5;
-      tryInitArrow();
-    }
-  }
-  updateArrow();
   if (desiredKillArea != -1) {
     const rect = KILLAREAS[desiredKillArea] ? KILLAREAS[desiredKillArea].getUnityComponent("RectTransform") : null;
     if (rect) {

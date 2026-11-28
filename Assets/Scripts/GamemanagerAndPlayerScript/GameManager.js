@@ -236,7 +236,8 @@ function updateLobby(deltaTime) {
   participantsText.setText("参加者\n" + participants.map(participant => participant.userDisplayName).join('\n'));
 
   $.state.participants = participants;
-  setCanStart(participants.length >= $.state.imposterNum * 2 + 1);
+  setCanStart(true);
+  //setCanStart(participants.length >= $.state.imposterNum * 2 + 1);
 }
 
 
@@ -292,7 +293,7 @@ $.onReceive((messageType, arg, sender) => {
       const participants = $.state.participants;
       const imposterNum = $.state.imposterNum;
 
-      if (participants.length < imposterNum * 2 + 1) break;
+      //if (participants.length < imposterNum * 2 + 1) break;
       
       // 探索中のplayerは全員戻す
       const allPlayers = $.getPlayersNear($.getPosition(), Infinity);
@@ -363,6 +364,7 @@ $.onReceive((messageType, arg, sender) => {
       crews = crews.filter(c => c.id !== victim.id);
       $.state.crews = crews;
       $.state.deadPlayers = [...$.state.deadPlayers, victim];
+      $.worldItemReference("blackOutmaker").send("blackOutRemove", victim); // 停電中なら、その人の暗幕を消す
       victim.send("kill", null);
       updateStatusBoard();
 
@@ -790,6 +792,7 @@ function finishVoting() {
       $.state.impostors = $.state.impostors.filter(p => p.id !== ejectedId);
       $.state.crews = $.state.crews.filter(p => p.id !== ejectedId);
       $.state.deadPlayers = [...$.state.deadPlayers, ejectedPlayer];
+      $.worldItemReference("blackOutmaker").send("blackOutRemove", ejectedPlayer); // 暗幕の予約や作成済みがあれば消す
       warpPlayer(ejectedPlayer, WAITING_ROOM_POSITION);
       if (wasImpostor) dropTasksOf(ejectedId); // インポスターのフェイクタスクは、数えない
       else startGhostTasks(ejectedId);         // 追放されたクルーのタスクは、待機室での作業と時間経過で進める
@@ -834,11 +837,11 @@ function checkWinCondition() {
     endGame("crew");
     return true;
   }
-  
+  /*
   if (impostorCount >= crewCount) {
     endGame("imposter");
     return true;
-  }
+  }*/
   return false;
 }
 

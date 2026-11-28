@@ -94,7 +94,7 @@ let desiredKillArea = -1;
 function applyKillAreas() {
   if (!killAreasReady) return;
   for (let i = 0; i < KILLAREAS.length; i++) {
-    if (KILLAREAS[i]) KILLAREAS[i].setEnabled(i === desiredKillArea);
+    if (KILLAREAS[i]) KILLAREAS[i].setEnabled(i === desiredKillArea && !meetingLock); // 会議中は消す
   }
 }
 
@@ -371,6 +371,7 @@ _.onReceive((messageType, arg, sender) => {
 
     case "meetingStart":
       meetingLock = true;
+      applyKillAreas(); // 会議中は、キルエリアを消す
       sabotageActive = null; applySabotageUi();
       meetingObject.unityProp.text =
         (arg.corpseName
@@ -431,6 +432,7 @@ _.onReceive((messageType, arg, sender) => {
 
     case "votingResult": // from gamemanager. arg.ejectedName: 追放されたプレイヤーの名前, arg.ejectedRole: 同じく役職, arg.wasEjected: 自身が追放されたか
       meetingLock = false; // 会議が終わった
+      applyKillAreas();    // キルエリアを戻す(追放された人は、このあと desiredKillArea が -1 になる)
       setVoteButtonsVisible(false);
       meetingObject.unityProp.text = "";
       resultObject.unityProp.text = arg.ejectedName
@@ -571,7 +573,7 @@ _.onFrame((deltaTime) => {
       }
     }
   }
-  if (desiredKillArea != -1) {
+  if (desiredKillArea != -1 && !meetingLock) {
     const rect = KILLAREAS[desiredKillArea] ? KILLAREAS[desiredKillArea].getUnityComponent("RectTransform") : null;
     if (rect) {
       const pos = _.getPosition();
